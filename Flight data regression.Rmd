@@ -1,5 +1,5 @@
 ---
-title: "Linear regression on flight data"
+title: "Regression on flight data"
 output: html_document
 ---
 

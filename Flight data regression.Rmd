@@ -1,0 +1,261 @@
+---
+title: "Linear regression on flight data"
+output: html_document
+---
+
+Get access of the data 
+https://drive.google.com/file/d/1-bBXcpZZ0XbRui4825J5SVghs3Zhu16T/view?usp=sharing
+
+```{r setup}
+library(tidyverse)
+library(here)
+library(readr)
+library(future.apply)
+library(dplyr)
+library(httr)
+library(jsonlite)
+library(RColorBrewer)
+library(scales)
+library(feather)
+library(caret)
+
+```
+read file 
+```{r}
+raw_data <- read_feather(here('mlm_dataset_5.feather'))
+```
+
+
+Correlation plot 
+```{r}
+library(corrplot)
+num_col <- select_if(raw_data, is.numeric)
+
+# Dataset too large, thus need sampling 
+num_col <- num_col %>% sample_n(50000)
+
+corrplot(cor(num_col), method = 'number')
+corrplot(cor(num_col), method = 'ellipse')
+
+```
+
+Chi-square independence test 
+```{r}
+library(broom)
+cat_col <- mlm_all %>% select_if(negate(is.numeric))
+
+#First column against other columns 
+CHIS <- lapply(cat_col[,-1], function(x) chisq.test(cat_col[,1], x))
+chi_result <- do.call(rbind, lapply(CHIS,tidy))
+
+show(chi_result)
+```
+
+Point-biseral test 
+
+When cor() function in R applied to a numerical and a dichotomous variable, it's the equivalence of point-biseral test
+```{r}
+#Turn cateogrical variables into dichotomous
+
+#requires a lot of memory to run dummy variable codes 
+small_data <- raw_data %>% sample_n(50000)
+  
+dmy <- dummyVars(" ~ . ", data= small_data, fullRank = T)
+point_test_data <- data.frame(predict(dmy, newdata = small_data))
+
+#correlation test (including everything)
+corr_result_all <- round(cor(point_test_data), digits = 2)
+
+show(corr_result_all)
+```
+For interpreting the result, look at the results among numerical and categorical variables (after dummy). 
+
+
+Numerical data transformation
+Min-max normalization 
+```{r}
+min_max_norm <- function(x){
+  (x-min(x)) / (max(x) - min(x))
+}
+
+num_col <- select_if(raw_data, is.numeric)
+
+num_col_norm <- as.data.frame(lapply(num_col, min_max_norm))
+```
+
+Regrouping data
+```{r}
+cat_col <- raw_data %>% select_if(negate(is.numeric))
+num_col_norm$id <- seq.int(nrow(raw_data))
+cat_col$id <- seq.int(nrow(raw_data))
+combine_data <- left_join(num_col_norm, cat_col, by = 'id')
+normalized_data <- combine_data %>% select(-id)
+mlm_all<- normalized_data
+```
+
+linear regression 
+```{r}
+mlm1 <- lm(dep_delay ~ month + day_of_week + dest_state_abr + dep_time +
+             airline + taxi_out + origin_airport_code + dest_airport_code +
+             air_time + taxi_in + manufacturer + model + age +
+             emptotal, data = mlm_all)
+summary(mlm1) # R-Squared 0.03944 p < 2.2e-16
+plot(mlm1)
+```
+
+Boruta feature selection
+```{r}
+# Run Boruta
+boruta_sasuke <- Boruta(dep_delay ~ month + day_of_week + dep_time +
+                        airline + taxi_out + origin_airport_code + 
+                        model + age, data = mlm_all, doTrace = 2)
+
+boruta_signif <- names(boruta_sasuke$finalDecision[boruta_sasuke$finalDecision %in% c("Confirmed", "Tentative")])
+print(boruta_signif)
+plot(boruta_sasuke, cex.axis = .7,
+     las = 2, xlab ="", main = "Variable Importance")
+
+```
+
+New linear regression model based on Boruta feature selection
+```{r}
+mlm5 <- lm(dep_delay ~ month + dep_time +
+             airline + age, data = mlm_all)
+summary(mlm5) # R-Squared .01202 p-value <2.2e-16
+VIF(mlm5)
+```
+
+Add internaction variables 
+```{r}
+mlm_7 <- lm(dep_delay ~ month + dep_time +
+              airline + age + month:age + 
+              airline:age + airline:dep_time
+            , data = mlm_all)
+
+summary(mlm_7)
+```
+Interaction variable not significant --> no need to add interaction variable
+
+Final model is mlm5: diagnostic plots 
+```{r}
+# Model diagnoistic 
+
+pairs(mlm_CA)
+corrplot(cor(mlm_CA_sub3), method = "number")
+
+
+# Residual Plot on MLM 5
+
+plot(mlm5)
+```
+
+Binomial regression
+1. filter data those with positive depature delays
+```{r}
+blm_bino <- mlm_all %>% 
+  filter(dep_delay > 0)
+summary(blm_bino)
+#dep delay median is 12, mean 20.8. 1Q 4, 3Q 30
+```
+
+2. Create new Binomial delay 
+```{r}
+blm_bino <- blm_bino %>% 
+  mutate(delay_new = dep_delay > 12)
+
+summary(blm_bino)
+#344677 true, #356513 false
+```
+
+3. Train/Test set data
+```{r}
+blm_bino$id <- 1:nrow(blm_bino)
+blm_bino.train <- blm_bino %>% dplyr::sample_frac(0.75)
+blm_bino.test <- dplyr::anti_join(blm_bino, blm_bino.train, by ='id')
+```
+
+4. GLM model 
+```{r}
+glm0 <- glm(delay_new ~ month + day_of_week + dest_state_abr + dep_time +
+              airline + taxi_out + origin_airport_code + dest_airport_code +
+              air_time + taxi_in + manufacturer + model + age +
+              emptotal, family = binomial(logit), data = mlm_bino.train)
+summary(glm0)
+
+glm1 <- glm(delay_new ~ month + dep_time +
+              airline + taxi_out + 
+              model + age, family = binomial(logit), data = mlm_bino.train)
+summary(glm1)
+```
+
+5. Model only for American Airlines
+```{r}
+blm_aa.train <- blm_bino.train %>% 
+  filter(airline == 'American Airlines Inc.')
+
+blm_aa.test <- blm_bino.test %>% 
+  filter(airline == 'American Airlines Inc.')
+
+blm2 <- glm(delay_new ~ month + dep_time +
+              model, 
+              family = binomial(logit), data = blm_aa.train)
+summary(blm2)
+```
+
+6. Model only for Delta 
+```{r}
+blm_dl.train <- blm_bino.train %>% 
+  filter(airline == 'Delta Air Lines Inc.')
+
+blm_dl.test <- blm_bino.test %>% 
+  filter(airline == 'Delta Air Line Inc.')
+
+blm_ua.train <- blm_bino.train %>% 
+  filter(airline == 'United Air Lines Inc.')
+
+blm_ua.test <- blm_bino.test %>% 
+  filter(airline == 'United Air Line Inc.')
+
+
+blm3 <- glm(delay_new ~ month + dep_time +
+              + model, 
+            family = binomial(logit), data = blm_dl.train)
+summary(blm3)
+
+blm4 <- glm(delay_new ~ month + dep_time +
+              model, 
+            family = binomial(logit), data = blm_ua.train)
+summary(blm4)
+```
+
+VIF of models 
+```{r}
+VIF(glm1)
+VIF(blm2)
+VIF(blm3)
+VIF(blm4)
+
+1/VIF(blm2)
+```
+
+Model validation
+```{r}
+probability_aa <- predict(blm2, newdata = blm_aa.test, type='response')
+prediction_aa <- ifelse(probability_aa > 0.5, 1, 0)
+confusion_aa <- table(blm_aa.test$delay_new, prediction_aa)
+
+confusion_aa
+```
+
+Confusion Matrix 
+```{r}
+library(DHARMa)
+
+res <- simulateResiduals(blm2, plot = T)
+
+# Table
+
+library(knitr)
+kable(confusion_aa, caption = "Confusion Matrix")
+```
+

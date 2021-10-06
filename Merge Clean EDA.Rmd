@@ -1,0 +1,34 @@
+---
+title: "Merge Clean EDA"
+output: html_document
+---
+
+```{r setup}
+# 1. Load Packages. These were used:
+library(tidyverse)
+library(here)
+library(future.apply)
+library(dplyr)
+library(jsonlite)
+library(data.table)
+library(feather)
+library(janitor)
+```
+
+## Abstract
+
+This document is designed to outline the basic steps a group of university students used for a class project on modeling airline on-time performance using the programming language R in R studio. For many of us, it was our first time using R and much time was spent debugging our own code from Stack Overflow. We hope that this document is useful for those who may be beginners with data science in R programming and hope that it can be generalised for use in future workflows outside of aviation. This specific document will outline which functions we used to load data, merge data, clean data, and perform simple exploratory analysis.
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

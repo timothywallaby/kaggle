@@ -19,8 +19,14 @@ library(janitor)
 
 This document is designed to outline the basic steps a group of university students used for a class project on modeling airline on-time performance using the programming language R in R studio. For many of us, it was our first time using R and much time was spent debugging our own code from Stack Overflow. We hope that this document is useful for those who may be beginners with data science in R programming and hope that it can be generalised for use in future workflows outside of aviation. This specific document will outline which functions we used to load data, merge data, clean data, and perform simple exploratory analysis.
 
-```{r cars}
-summary(cars)
+## 1. Load Data
+
+The csv files we had were particularly large. Here, we used the fucntion "fread()" from package "data.table" instead of read.csv() or read_csv() as it parallelises the function and can read large csvs with incredible speed. 
+
+The here() function makes it easier to point where your file is. This function goes to wherever your working environment is.
+
+```{r load data}
+delays <- fread(here('dataset.csv'))
 ```
 
 ## Including Plots

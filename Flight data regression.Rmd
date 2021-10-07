@@ -3,8 +3,13 @@ title: "Regression on flight data"
 output: html_document
 ---
 
-Get access of the data 
-https://drive.google.com/file/d/1-bBXcpZZ0XbRui4825J5SVghs3Zhu16T/view?usp=sharing
+Get access of the data /
+https://drive.google.com/file/d/1-bBXcpZZ0XbRui4825J5SVghs3Zhu16T/view?usp=sharing \
+Data includes 2019-2021 US airlines including American Airlines, United Airlines and Delta Airlines\ 
+
+The original data was provided by ICAO: \
+https://www.transtats.bts.gov/Tables.asp?QO_VQ=EFD&QO_anzr=Nv4yv0r%FDb0-gvzr%FDcr4s14zn0pr%FDQn6n&QO_fu146_anzr=b0-gvzr \
+
 
 ```{r setup}
 library(tidyverse)
@@ -20,11 +25,11 @@ library(feather)
 library(caret)
 
 ```
+
 read file 
 ```{r}
 raw_data <- read_feather(here('mlm_dataset_5.feather'))
 ```
-
 
 Correlation plot 
 ```{r}
@@ -42,7 +47,7 @@ corrplot(cor(num_col), method = 'ellipse')
 Chi-square independence test 
 ```{r}
 library(broom)
-cat_col <- mlm_all %>% select_if(negate(is.numeric))
+cat_col <- raw_data %>% select_if(negate(is.numeric))
 
 #First column against other columns 
 CHIS <- lapply(cat_col[,-1], function(x) chisq.test(cat_col[,1], x))
